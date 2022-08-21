@@ -1,0 +1,8 @@
+# VS Code
+.vscode/
+
+# Deep Code
+.dccache
+
+# Structurizr Lite
+.structurizr/

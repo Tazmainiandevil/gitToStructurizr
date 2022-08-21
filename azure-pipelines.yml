@@ -1,0 +1,52 @@
+trigger:
+  - main
+
+pr: none
+ 
+pool:
+    vmImage: ubuntu-latest
+parameters:
+  - name: folderAsId
+    type: boolean
+    default: false
+  - name: createImages
+    type: boolean
+    default: false
+
+variables:
+  downloadFolder: 'downloads'
+  
+steps:
+- pwsh: |
+    $devops_event_before = $env:BUILD_BUILDSOURCEVERSION
+    $uri = "$env:SYSTEM_TEAMFOUNDATIONSERVERURI$env:SYSTEM_TEAMPROJECT/_apis/build/builds/$($env:BUILD_BUILDID)/changes?api-version=6.1"    
+    $changes = Invoke-RestMethod -Method Get -Headers @{ Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN" } -Uri $uri -Verbose    
+    if ($changes.count -gt 0) {
+      $firstCommit = $changes.value[$changes.count-1].id
+      # Go back to the commit before the first change
+      $devops_event_before = git rev-parse $firstCommit^           
+    }
+    Write-Host $devops_event_before 
+    Write-Host "##vso[task.setvariable variable=DEVOPS_EVENT_BEFORE]$devops_event_before"
+  displayName: 'Get Start Commit Id'
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+- bash: |
+    sudo apt-get install graphviz
+  displayName: 'Install dependencies'
+  condition: and(succeeded(), eq(${{ parameters.createImages }}, 'true'))
+- task: PowerShell@2
+  displayName: 'Publish Workspace'
+  inputs:
+    targetType: 'filePath'
+    filePath: ./publish.ps1
+    arguments: -StartCommitId $(DEVOPS_EVENT_BEFORE) -CommitId $(Build.SourceVersion) -DownloadFolder $(downloadFolder) -FolderAsId $${{ parameters.folderAsId }} -CreateImages $${{ parameters.createImages }}
+  env:
+    WORKSPACE_KEY_MYPROJECT: $(WORKSPACE_KEY_MYPROJECT)
+    WORKSPACE_SECRET_MYPROJECT: $(WORKSPACE_SECRET_MYPROJECT)
+    WORKSPACE_KEY_OTHERPROJECT: $(WORKSPACE_KEY_OTHERPROJECT)
+    WORKSPACE_SECRET_OTHERPROJECT: $(WORKSPACE_SECRET_OTHERPROJECT)
+- publish: $(downloadFolder)
+  displayName: Publish Diagrams
+  artifact: 'architecture'
+  condition: and(succeeded(), eq(${{ parameters.createImages }}, 'true'))

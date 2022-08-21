@@ -1,0 +1,37 @@
+name: Structurizr Workspace Pipeline
+on: 
+  push: 
+    branches: [ main ]
+env:
+  CREATE_IMAGES: ${{ false }}
+  FOLDER_AS_ID: ${{ false }}
+
+jobs:
+  structurizr_workspace_pipeline:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Install dependencies
+      if: ${{ env.CREATE_IMAGES == 'true' }}
+      run: sudo apt-get install graphviz
+    - name: Create Secrets as Envs
+      run: |
+        while IFS="=" read -r key value
+        do
+          echo "$key=$value" >> $GITHUB_ENV
+        done < <(jq -r "to_entries|map(\"\(.key)=\(.value)\")|.[]" <<< "$SECRETS_CONTEXT")
+      env:
+        SECRETS_CONTEXT: ${{ toJson(secrets) }}
+    - name: Publish Workspace
+      run: |
+        ./publish.ps1 -StartCommitId ${{ github.event.before }} -CommitId ${{ github.sha }} -DownloadFolder 'downloads' -FolderAsId $${{ env.FOLDER_AS_ID }} -CreateImages $${{ env.CREATE_IMAGES }}
+      shell: pwsh
+    - name: Publish Diagrams
+      if: ${{ env.CREATE_IMAGES == 'true' }}
+      uses: actions/upload-artifact@v2
+      with:  
+        name: architecture
+        path: downloads
